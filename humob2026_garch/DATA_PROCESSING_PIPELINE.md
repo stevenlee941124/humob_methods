@@ -70,15 +70,13 @@ humob2026_garch/
 
 * **數據來源**：`data/raw/humob2026-dataset.tsv`
 * **資料格式**：TSV 格式，每行結構為：
-  ```math
-  \text{Date} \quad \backslash t \quad \{ \text{Origin\_Grid}: \{ \text{Destination\_Grid}: \text{Flow\_Value} \} \}
-  ```
+  > `Date \t { Origin_Grid: { Destination_Grid: Flow_Value } }`
 * **空間範圍 (Bounding Box)**：
-  - $X \in [30, 70]$，共 41 欄
-  - $Y \in [35, 70]$，共 36 列
-  - 空間網格總數 $N_{\text{grids}} = 41 \times 36 = 1476$ 個網格。
+  - X 範圍：30 ~ 70，共 41 欄
+  - Y 範圍：35 ~ 70，共 36 列
+  - 空間網格總數：`41 × 36 = 1,476` 個網格。
   - **對角線 (Diagonal Stay Flow)**：1,476 個網格內部停留。
-  - **非對角線 (Off-Diagonal Flow)**：$1476 \times 1475 = 2177100$ 個跨區流動對。
+  - **非對角線 (Off-Diagonal Flow)**：`1,476 × 1,475 = 2,177,100` 個跨區流動對。
 * **時間範圍與盲區**：
   - 總時間跨度：2023/11/01 至 2024/10/31（共 366 天）。
   - **90 天盲區預報期**：2024/02/01 至 2024/04/30（競賽主要評估 4 月份）。
@@ -94,9 +92,9 @@ humob2026_garch/
 #### 2. 處理流程
 1. **字串安全修復與解析**：TSV 中的 `: NA` 缺失標記轉換為 Python `None`，並以安全 eval 還原為字典。
 2. **全域活躍 OD 路線掃描 (Active OD Pairs)**：
-   - 遍歷全年觀測，凡流量 $> 0$ 之 OD 路線加入集合，共提煉出 **約 3.9 萬條活躍 OD 路線**（含外部區域 `-1_-1`）。
+   - 遍歷全年觀測，凡流量 > 0 之 OD 路線加入集合，共提煉出 **約 3.9 萬條活躍 OD 路線**（含外部區域 `-1_-1`）。
 3. **稠密時序矩陣對齊**：
-   - 針對每條活躍 OD，建立長度等於有效觀測天數的 `float` 陣列，未觀測到的日期標記為 `np.nan`。
+   - 針對每條活躍 OD，建立長度等於有效觀測天數的 float 陣列，未觀測到的日期標記為 `NaN`。
 4. **輸出**：序列化為 `od_time_series.pkl` 與 `dates.pkl`。
 
 ---
@@ -107,14 +105,14 @@ humob2026_garch/
 2024/01/01 能登半島地震對不同地理網格造成截然不同的影響（避難所人流湧入 vs. 嚴重受災區人流驟降）。本步驟對各網格進行動力學行為特徵分類。
 
 #### 2. 分類演算法規則
-提取各網格的對角線停留流量 ($g-g$)，比較**震前基準期**（`< 2024/01/01`）與**震後衝擊期**（`2024/01/01 ~ 2024/01/31`）之日均流量：
+提取各網格的對角線停留流量 (g-g)，比較**震前基準期**（`< 2024/01/01`）與**震後衝擊期**（`2024/01/01 ~ 2024/01/31`）之日均流量：
 
 | 動力學類別 | 判斷條件 | 行為意涵 |
 | :--- | :--- | :--- |
-| **Persistent Zero** | $\text{Pre} < 0.5$ 且 $\text{Jan} < 0.5$ | 極偏遠或非活躍網格，全年幾無人流 |
-| **Persistent Low Volume** | $\text{Pre} < 5.0$ 且 $\text{Jan} < 5.0$ | 常態性極低流量區域 |
-| **Partial Recovery** | $\text{Jan} < \text{Pre} \times 0.6$ | 震後人流大幅衰減，處於緩步復原中 |
-| **Temporary Increase** | $\text{Jan} > \text{Pre} \times 1.3$ | 震後湧入避難或救災人流樞紐 |
+| **Persistent Zero** | `Pre < 0.5` 且 `Jan < 0.5` | 極偏遠或非活躍網格，全年幾無人流 |
+| **Persistent Low Volume** | `Pre < 5.0` 且 `Jan < 5.0` | 常態性極低流量區域 |
+| **Partial Recovery** | `Jan < Pre × 0.6` | 震後人流大幅衰減，處於緩步復原中 |
+| **Temporary Increase** | `Jan > Pre × 1.3` | 震後湧入避難或救災人流樞紐 |
 | **True Stable** | 其他情況 | 常態穩定網格，受地震衝擊較小 |
 
 3. **輸出**：儲存為 `grid_final_classification.csv`。
@@ -128,28 +126,25 @@ humob2026_garch/
 
 #### 2. 分層分治預測架構 (Hierarchical Synthesis)
 
-##### 🅰️ 對角線停留流動 (Diagonal Stay Flow, $src == dst$)：
+##### 🅰️ 對角線停留流動 (Diagonal Stay Flow, src == dst)：
 針對市中心高流量網格（均值 26.57 人），採用 **四支柱 GARCH 動態合成**：
-1. **宏觀三次 Hermite 樣條基準中軸線 $B(t)$**：
+1. **宏觀三次 Hermite 樣條基準中軸線 B(t)**：
    - 提取震前、1 月震後、4~6 月復原期、8~10 月後期錨點。
    - 使用單調三次 Hermite 樣條插值，無超調振盪地平滑貫穿全年趨勢。
-2. **日曆去污染標準化載波 $\psi(\text{DOW}_t + \phi_t)$**：
+2. **日曆去污染標準化載波 ψ(DOW_t + φ_t)**：
    - 剔除歷史日本國定假日干擾，提純出純淨 7 天星期規律載波。
-   - 引入指數衰減相位位移 $\phi_t = 0.35 \cdot e^{-0.02t}$ 捕捉震後節奏偏移。
+   - 引入指數衰減相位位移 `φ_t = 0.35 · e^(-0.02t)` 捕捉震後節奏偏移。
 3. **GARCH(1,1) 動態條件異方差**：
-   ```math
-   \sigma_t^2 = \omega + \beta \cdot \sigma_{t-1}^2 \quad (\alpha=0.25, \beta=0.65)
-   ```
+   > **σ_t² = ω + 0.65 · σ_{t-1}²**  (其中 α = 0.25, β = 0.65)
+   
    動態捕捉震後波動聚集，並在 90 天盲區中平滑耗散回歸常態振幅。
 4. **日本國定假日狀態調節**：
    - 昭和之日（4/29）等國定假日自動映射至週日行為輪廓。
    - 假日前夕加入出遊潮增益修正。
 5. **確定性期望值合成**：
-   ```math
-   \hat{y}(t) = \max\left(0, B(t) + \sigma_t \cdot \psi(\text{DOW}_t + \phi_t) + \text{Hol\_Modifier}\right)
-   ```
+   > **ŷ(t) = max( 0, B(t) + σ_t · ψ(DOW_t + φ_t) + Hol_Modifier )**
 
-##### 🅱️ 非對角線跨區流動 (Off-Diagonal Flow, $src \ne dst$)：
+##### 🅱️ 非對角線跨區流動 (Off-Diagonal Flow, src != dst)：
 針對全域 217.7 萬個網格對中 **99% 以上真實值為 0 的極度稀疏特性**：
 * 採用 **宏觀平滑中軸線 (Centerline Smoothing)**，不強行套用波動噪聲，避免在 217 萬個零流量對產生累加平方誤差。
 
@@ -160,24 +155,20 @@ humob2026_garch/
 ### 步驟 4：最新官方規範嚴格評估 (`step4_evaluate_predictions.py`)
 
 #### 1. 核心任務
-依據官方最新評測常數（$\text{Mean}_{\text{diag}} = 26.57$、$\text{Mean}_{\text{offdiag}} = 0.0176$），評估 4 月份（28 個有效評估日）的真實誤差，並對比 Baseline 基準模型。
+依據官方最新評測常數（`Mean_diag = 26.57`、`Mean_offdiag = 0.0176`），評估 4 月份（28 個有效評估日）的真實誤差，並對比 Baseline 基準模型。
 
 #### 2. 指標計算公式
 
 1. **對角線停留均方根誤差 (Diag RMSE)**：
-   ```math
-   \text{RMSE}_{\text{diag}} = \sqrt{\frac{1}{1476} \sum_{g=1}^{1476} (y_{g,g} - \hat{y}_{g,g})^2}, \quad \text{NRMSE}_{\text{diag}} = \frac{\text{RMSE}_{\text{diag}}}{26.57}
-   ```
+   > **RMSE_diag = √( (1 / 1476) · Σ (y_g,g - ŷ_g,g)² )**  
+   > **NRMSE_diag = RMSE_diag / 26.57**
 
 2. **非對角線跨區均方根誤差 (Off-Diag RMSE)**：
-   ```math
-   \text{RMSE}_{\text{off}} = \sqrt{\frac{1}{2177100} \sum_{i \ne j} (y_{i,j} - \hat{y}_{i,j})^2}, \quad \text{NRMSE}_{\text{off}} = \frac{\text{RMSE}_{\text{off}}}{0.0176}
-   ```
+   > **RMSE_off = √( (1 / 2177100) · Σ (y_i,j - ŷ_i,j)² )**  
+   > **NRMSE_off = RMSE_off / 0.0176**
 
 3. **官方綜合指標 (Combined NRMSE)**：
-   ```math
-   \text{Combined NRMSE} = 0.5 \times (\text{NRMSE}_{\text{diag}} + \text{NRMSE}_{\text{off}})
-   ```
+   > **Combined NRMSE = 0.5 · ( NRMSE_diag + NRMSE_off )**
 
 ---
 
