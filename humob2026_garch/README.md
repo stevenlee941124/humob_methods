@@ -25,6 +25,7 @@ humob2026_garch/
 ├── run_full_pipeline.py                   # 🚀 一鍵端到端完整執行腳本 (步驟 1~4)
 ├── app_dashboard.py                       # 🖥️ 獨立互動 Streamlit 視覺化儀表板
 ├── requirements.txt                       # Python 相依套件清單
+├── GARCH_MATHEMATICAL_MODEL.md            # 📐 Step 3 完整數學模型架構說明書
 ├── DATA_PROCESSING_PIPELINE.md            # 📚 從原始數據到產出結果的詳細技術指南
 └── README.md                              # 本技術說明文檔
 ```
@@ -40,13 +41,14 @@ python run_full_pipeline.py
 
 ### 2. 啟動互動視覺化 Dashboard：
 ```powershell
-cd humob2026_garch
 streamlit run app_dashboard.py
 ```
 
 ---
 
 ## 📐 核心演算法架構 (GARCH Architecture)
+
+詳細數學推導與動態系統方程請參閱專屬文件：[`GARCH_MATHEMATICAL_MODEL.md`](./GARCH_MATHEMATICAL_MODEL.md)。
 
 1. **宏觀基準中軸線 B(t)**：
    採用三次 Hermite 樣條插值（Cubic Hermite Spline），鎖定 2023/11 至 2024/10 全年漸進復原趨勢。
