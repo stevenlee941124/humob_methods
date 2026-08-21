@@ -70,17 +70,15 @@ humob2026_garch/
 
 * **數據來源**：`data/raw/humob2026-dataset.tsv`
 * **資料格式**：TSV 格式，每行結構為：
-
-  $$
+  ```math
   \text{Date} \quad \backslash t \quad \{ \text{Origin\_Grid}: \{ \text{Destination\_Grid}: \text{Flow\_Value} \} \}
-  $$
-
+  ```
 * **空間範圍 (Bounding Box)**：
   - $X \in [30, 70]$，共 41 欄
   - $Y \in [35, 70]$，共 36 列
-  - 空間網格總數 $N_{\text{grids}} = 41 \times 36 = \mathbf{1,476}$ 個網格。
-  - **對角線 (Diagonal Stay Flow)**：$1,476$ 個網格內部停留。
-  - **非對角線 (Off-Diagonal Flow)**：$1,476 \times 1,475 = \mathbf{2,177,100}$ 個跨區流動對。
+  - 空間網格總數 $N_{\text{grids}} = 41 \times 36 = 1476$ 個網格。
+  - **對角線 (Diagonal Stay Flow)**：1,476 個網格內部停留。
+  - **非對角線 (Off-Diagonal Flow)**：$1476 \times 1475 = 2177100$ 個跨區流動對。
 * **時間範圍與盲區**：
   - 總時間跨度：2023/11/01 至 2024/10/31（共 366 天）。
   - **90 天盲區預報期**：2024/02/01 至 2024/04/30（競賽主要評估 4 月份）。
@@ -139,20 +137,17 @@ humob2026_garch/
    - 剔除歷史日本國定假日干擾，提純出純淨 7 天星期規律載波。
    - 引入指數衰減相位位移 $\phi_t = 0.35 \cdot e^{-0.02t}$ 捕捉震後節奏偏移。
 3. **GARCH(1,1) 動態條件異方差**：
-
-   $$
+   ```math
    \sigma_t^2 = \omega + \beta \cdot \sigma_{t-1}^2 \quad (\alpha=0.25, \beta=0.65)
-   $$
-
+   ```
    動態捕捉震後波動聚集，並在 90 天盲區中平滑耗散回歸常態振幅。
 4. **日本國定假日狀態調節**：
    - 昭和之日（4/29）等國定假日自動映射至週日行為輪廓。
    - 假日前夕加入出遊潮增益修正。
 5. **確定性期望值合成**：
-
-   $$
+   ```math
    \hat{y}(t) = \max\left(0, B(t) + \sigma_t \cdot \psi(\text{DOW}_t + \phi_t) + \text{Hol\_Modifier}\right)
-   $$
+   ```
 
 ##### 🅱️ 非對角線跨區流動 (Off-Diagonal Flow, $src \ne dst$)：
 針對全域 217.7 萬個網格對中 **99% 以上真實值為 0 的極度稀疏特性**：
@@ -165,27 +160,24 @@ humob2026_garch/
 ### 步驟 4：最新官方規範嚴格評估 (`step4_evaluate_predictions.py`)
 
 #### 1. 核心任務
-依據官方最新評測常數（`MEAN_ACTUAL_DIAG = 26.57`、`MEAN_ACTUAL_OFFDIAG = 0.0176`），評估 4 月份（28 個有效評估日）的真實誤差，並對比 Baseline 基準模型。
+依據官方最新評測常數（$\text{Mean}_{\text{diag}} = 26.57$、$\text{Mean}_{\text{offdiag}} = 0.0176$），評估 4 月份（28 個有效評估日）的真實誤差，並對比 Baseline 基準模型。
 
 #### 2. 指標計算公式
 
 1. **對角線停留均方根誤差 (Diag RMSE)**：
-
-   $$
+   ```math
    \text{RMSE}_{\text{diag}} = \sqrt{\frac{1}{1476} \sum_{g=1}^{1476} (y_{g,g} - \hat{y}_{g,g})^2}, \quad \text{NRMSE}_{\text{diag}} = \frac{\text{RMSE}_{\text{diag}}}{26.57}
-   $$
+   ```
 
 2. **非對角線跨區均方根誤差 (Off-Diag RMSE)**：
-
-   $$
+   ```math
    \text{RMSE}_{\text{off}} = \sqrt{\frac{1}{2177100} \sum_{i \ne j} (y_{i,j} - \hat{y}_{i,j})^2}, \quad \text{NRMSE}_{\text{off}} = \frac{\text{RMSE}_{\text{off}}}{0.0176}
-   $$
+   ```
 
 3. **官方綜合指標 (Combined NRMSE)**：
-
-   $$
+   ```math
    \text{Combined NRMSE} = 0.5 \times (\text{NRMSE}_{\text{diag}} + \text{NRMSE}_{\text{off}})
-   $$
+   ```
 
 ---
 
