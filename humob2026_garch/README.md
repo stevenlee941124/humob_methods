@@ -25,6 +25,7 @@ humob2026_garch/
 ├── run_full_pipeline.py                   # 🚀 一鍵端到端完整執行腳本 (步驟 1~4)
 ├── app_dashboard.py                       # 🖥️ 獨立互動 Streamlit 視覺化儀表板
 ├── requirements.txt                       # Python 相依套件清單
+├── DATA_PROCESSING_PIPELINE.md            # 📚 從原始數據到產出結果的詳細技術指南
 └── README.md                              # 本技術說明文檔
 ```
 
@@ -44,7 +45,7 @@ streamlit run app_dashboard.py
 
 ---
 
-## 📐 核心演算法架構 (GARCH python run_full_pipeline.pyArchitecture)
+## 📐 核心演算法架構 (GARCH Architecture)
 
 1. **宏觀基準中軸線 $B(t)$**：
    採用三次 Hermite 樣條插值（Cubic Hermite Spline），鎖定 2023/11 至 2024/10 全年漸進復原趨勢。
