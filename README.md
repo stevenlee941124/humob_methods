@@ -43,7 +43,7 @@ python run_full_pipeline.py
 ### 2. 啟動互動視覺化 Dashboard：
 ```powershell
 cd humob2026_garch
-streamlit run app_dashboard.py
+python -m streamlit run app_dashboard.py
 ```
 
 ---

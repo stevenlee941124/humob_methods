@@ -213,5 +213,5 @@ python step4_evaluate_predictions.py
 
 ### 3. 啟動 Streamlit 互動視覺化儀表板：
 ```powershell
-streamlit run app_dashboard.py
+python -m streamlit run app_dashboard.py
 ```
