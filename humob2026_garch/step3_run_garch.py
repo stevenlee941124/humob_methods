@@ -178,15 +178,15 @@ for od in routes_list:
             hol_modifier = 0.15 * amp_scale if hol_feat['is_holiday_eve'] else 0.0
 
             pred_flow = max(0.0, b_val + curr_sigma * c_val + hol_modifier)
-            if pred_flow > 0.01:
+            if pred_flow > 0.1:
                 if orig not in out_gap90_garch[d_str]:
                     out_gap90_garch[d_str][orig] = {}
                 out_gap90_garch[d_str][orig][dest] = round(float(pred_flow), 4)
     else:
-        # 3. 非對角線跨區流動：僅對實體活躍跨區路線採用宏觀平滑中軸線 (Centerline Smoothing)
+        # 3. 非對角線跨區流動：僅對實體活躍且平滑值 > 0.1 的路線輸出，0.1 以下均視為 0
         for t_step, d_str in enumerate(gap90_dates):
             base_val = base_data.get(d_str, {}).get(orig, {}).get(dest, None)
-            if base_val is not None and float(base_val) > 0.01:
+            if base_val is not None and float(base_val) > 0.1:
                 if orig not in out_gap90_garch[d_str]:
                     out_gap90_garch[d_str][orig] = {}
                 out_gap90_garch[d_str][orig][dest] = round(float(base_val), 4)
