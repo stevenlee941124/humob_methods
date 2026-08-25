@@ -2,17 +2,25 @@
 ===============================================================================
 HuMob 2026: Step 2 Spatial - Build 2D Spatial-Temporal Grid Tensor Dataset
 ===============================================================================
+詳細數學模型與推導，請參閱：DIFFUSION_MATHEMATICAL_MODEL.md
+
+資料結構範例 (Data Structure Examples)：
+  - 輸入 (od_time_series.pkl): 
+    {
+      '31_38-31_38': array([12.0, 15.0, np.nan, ...]),
+      ...
+    }
+  - 輸出 (spatial_diffusion_dataset.npz):
+    包含 'spatial_z' 陣列 (N, 4, 70, 100)，代表每天 4 個通道的 2D 空間特徵，例如:
+    Z[0, 0, 30, 37] = 0.5 (代表第一天、通道0、座標x=30, y=37 的標準化殘差)
+
 輸入:
   - od_time_series.pkl (14,563 條 OD 路線時序, 292天)
   - dates.pkl (292天日期清單)
   - full_year_baseline.pkl (全年中軸 Baseline)
 處理:
   1. 空間網格座標界定: X ∈ [1, 70], Y ∈ [1, 100] -> (70, 100) 空間網格
-  2. 構建每日 4 通道 2D 空間張量:
-     - Channel 0: 留存人流密度 (Retention: Origin == Destination)
-     - Channel 1: 流出人流密度 (Total Outflow: Sum of non-diagonal outflows)
-     - Channel 2: 流入人流密度 (Total Inflow: Sum of non-diagonal inflows)
-     - Channel 3: 外域人流交換 (External Exchange: 与 -1_-1 的流動)
+  2. 構建每日 4 通道 2D 空間張量 (Channels: Retention, Outflow, Inflow, External Exchange)
   3. 計算空間中軸 Baseline 張量 B_spatial(t) 與空間殘差標準差 σ_spatial
   4. 輸出標準化空間殘差張量 Z_spatial(t) ∈ R^(4, 70, 100)
 ===============================================================================

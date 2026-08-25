@@ -2,10 +2,14 @@
 ===============================================================================
 HuMob 2026: Step 4 Spatial - Sample 2D Spatial Tensor & Decode to 14,563 OD Pairs
 ===============================================================================
-修正核心原則：
-  1. 所有非死寂路線 (包括 Group A 與 Group B) 的波動，100% 圍繞真實宏觀 Baseline 中心軸波動！
-  2. 徹底拔除人為乘以 p_act 的錯誤中軸下移與 0.2 縮放因子。
-  3. 標準反正規化：Y_pred(t) = max(0.0, Baseline(t) + z_spatial(t) * sigma_i)
+詳細數學模型與反正規化還原邏輯，請參閱：DIFFUSION_MATHEMATICAL_MODEL.md
+
+資料結構範例 (Data Structure Examples)：
+  - 模型生成輸出 (spatial_field_90d.npz):
+    'z_spatial_pred' -> 大小為 (90, 4, 70, 100) 的預測殘差張量
+  - 最終反正規化解碼結果 (diffusion_predictions.tsv):
+    20240201 \t {'31_38': {'31_38': 13.5, '32_38': 0.8}, ...}
+    20240202 \t {'31_38': {'31_38': 14.1, ...}, ...}
 ===============================================================================
 """
 import sys, pickle, numpy as np, pandas as pd, torch

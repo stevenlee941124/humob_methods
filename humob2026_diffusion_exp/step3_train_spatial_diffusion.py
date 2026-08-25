@@ -1,6 +1,13 @@
-﻿"""
+"""
 ===============================================================================
 HuMob 2026: Step 3 Spatial - Train 2D Spatial-Temporal Grid Diffusion Model
+===============================================================================
+詳細數學模型與推導，請參閱：DIFFUSION_MATHEMATICAL_MODEL.md
+
+資料結構範例 (Data Structure Examples)：
+  - 訓練資料 (spatial_diffusion_dataset.npz):
+    'spatial_z' (張量大小: N, 4, 70, 100) -> 每日 4 通道的 2D 空間殘差張量
+    'cal_cond' (張量大小: N, 4) -> 日曆條件特徵 [day_of_week, is_holiday, month, progression]
 ===============================================================================
 """
 import sys, time, pickle, numpy as np, torch
