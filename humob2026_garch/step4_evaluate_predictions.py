@@ -2,18 +2,13 @@
 ===============================================================================
 HuMob 2026 流水線 - 步驟 4：最新官方規範嚴格評估指標計算 (GARCH vs. Baseline)
 ===============================================================================
-評估指標說明：
-  1. 對角線誤差 (Diagonal RMSE / NRMSE_diag)：
-     - 評估全域 1,476 個空間網格自身的停留人流 (Stay Flow, g-g)。
-     - 官方新分母常數：mean_actual_diag = 26.57
-     - NRMSE_diag = RMSE_diag / 26.57
-  2. 非對角線誤差 (Off-Diagonal RMSE / NRMSE_off)：
-     - 評估全域 1,476 * 1,475 = 2,177,100 個跨網格流動對 (Flow OD, src != dst)。
-     - 包含所有真實流量為 0 的稀疏對，嚴格按全域分母平均。
-     - 官方新分母常數：mean_actual_offdiag = 0.0176
-     - NRMSE_off = RMSE_off / 0.0176
-  3. 官方綜合指標 (Combined NRMSE)：
-     - Combined NRMSE = 0.5 * (NRMSE_diag + NRMSE_off)
+詳細數學模型與評估指標推導，請參閱：GARCH_MATHEMATICAL_MODEL.md
+
+資料結構範例 (Data Structure Examples)：
+  - 輸入的預測 TSV 檔案格式 (例如 wave_garch_fullyear_holiday_garch.tsv):
+    20240401 \t {'31_38': {'31_38': 13.5, '32_38': 0.8}, ...}
+  - 讀取的真實數據集 (humob2026-dataset.tsv):
+    20240401 \t {'31_38': {'31_38': 12.0, '32_38': 1.0}, ...}
 
 輸入檔案：
   - data/raw/humob2026-dataset.tsv (包含 4 月份真實 Ground Truth)

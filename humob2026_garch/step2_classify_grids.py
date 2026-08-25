@@ -14,6 +14,18 @@ HuMob 2026 流水線 - 步驟 2：災後動力學 9 類別空間網格分類
      - True Stable: 人流穩定受災情影響小
   5. 若已有前置分類表則直接驗證載入，否則自動執行啟發式分類並匯出 CSV。
 
+資料結構範例 (Data Structure Examples)：
+  - 讀取的連續時序矩陣 (od_ts):
+    {
+      '31_38-31_38': array([12.0, 15.0, np.nan, ...]),
+      ...
+    }
+  - 輸出的網格分類表 (grid_final_classification.csv):
+    grid_id,final_class
+    31_38,Partial Recovery
+    32_38,True Stable
+    ...
+
 輸入檔案：
   - data/processed/od_time_series.pkl
   - data/processed/dates.pkl
