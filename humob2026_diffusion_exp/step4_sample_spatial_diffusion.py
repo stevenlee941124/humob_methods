@@ -120,13 +120,12 @@ for item in spatial_meta['od_spatial_map']:
     is_diag  = item['is_diag']
     is_ext   = item['is_ext']
     
-    prof = od_profiles.get(pair_key, 'Group_C_Dead_Zero')
-    if prof == 'Group_C_Dead_Zero':
+    b_366 = baselines.get(pair_key)
+    if b_366 is None or isinstance(b_366, str) or not isinstance(b_366, (list, np.ndarray)):
+        continue
+    if np.nanmax(b_366) <= 0.05:
         continue
         
-    b_366 = baselines.get(pair_key)
-    if b_366 is None:
-        continue
     baseline_90 = b_366[blind_idxs]
     sigma_i = real_sigmas.get(pair_key, 0.5)
     

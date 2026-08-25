@@ -72,11 +72,11 @@ st.markdown("""
 # ── 頂部模型指標看板 ──────────────────────────────────────────
 c1, c2, c3, c4 = st.columns(4)
 with c1:
-    st.metric("🏆 Combined NRMSE", "0.47106", "純 2D 空間擴散模型")
+    st.metric("🏆 Combined NRMSE", "0.30979", "純 2D 空間擴散模型 (4月錨定)")
 with c2:
-    st.metric("停留流動 (Diag) NRMSE", "0.21441", "RMSE 5.70 人")
+    st.metric("停留流動 (Diag) NRMSE", "0.17616", "RMSE 4.68 人")
 with c3:
-    st.metric("跨區流動 (Off-Diag) NRMSE", "0.72770", "RMSE 0.0128 人")
+    st.metric("跨區流動 (Off-Diag) NRMSE", "0.44342", "RMSE 0.0078 人")
 with c4:
     st.metric("🎯 官方評測範圍", "1,476 網格", "x:30~70, y:35~70 (1,836 路線)")
 

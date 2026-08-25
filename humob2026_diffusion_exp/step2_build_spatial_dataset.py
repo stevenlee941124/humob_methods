@@ -36,6 +36,7 @@ sys.stdout.reconfigure(encoding='utf-8')
 PACKAGE_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(PACKAGE_ROOT / 'src'))
 from japan_calendar import JAPAN_HOLIDAYS
+from exponential_baseline import compute_full_baseline
 
 OD_PKL       = PACKAGE_ROOT / 'data' / 'processed' / 'od_time_series.pkl'
 DATES_PKL    = PACKAGE_ROOT / 'data' / 'processed' / 'dates.pkl'
@@ -53,13 +54,28 @@ print("=" * 75)
 
 with open(OD_PKL, 'rb')       as f: od_ts     = pickle.load(f)
 with open(DATES_PKL, 'rb')    as f: dates_str = pickle.load(f)
-with open(BASELINE_PKL, 'rb') as f: baselines = pickle.load(f)
 
 start_dt = datetime(2023, 11, 1)
 cal_dates = [(start_dt + timedelta(days=i)).strftime('%Y%m%d') for i in range(366)]
 cal_date_to_idx = {d: i for i, d in enumerate(cal_dates)}
 obs_date_to_idx = {d: i for i, d in enumerate(dates_str)}
 N_OBS = len(dates_str)
+
+print("正在計算全域 15,129 條 OD 路線之 4 月真實錨定動態 Baseline...")
+baselines = {}
+for k, raw_arr in od_ts.items():
+    y_366 = np.zeros(366, dtype=np.float64)
+    for d_str, oi in obs_date_to_idx.items():
+        if d_str in cal_date_to_idx:
+            v = raw_arr[oi]
+            y_366[cal_date_to_idx[d_str]] = float(v) if not np.isnan(v) else 0.0
+    b_366, _, _ = compute_full_baseline(y_366, cal_dates, cal_date_to_idx)
+    baselines[k] = b_366
+
+BASELINE_PKL.parent.mkdir(parents=True, exist_ok=True)
+with open(BASELINE_PKL, 'wb') as f:
+    pickle.dump(baselines, f)
+print(f"✅ 已成功計算並儲存 4 月錨定動態 Baseline 至: {BASELINE_PKL}")
 
 # ── 1. 解析所有 OD 路線之 (ox, oy) -> (dx, dy) 空間座標 ──────
 def parse_grid_coord(grid_str):
