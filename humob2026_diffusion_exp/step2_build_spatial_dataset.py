@@ -1,28 +1,27 @@
-"""
+﻿"""
 ===============================================================================
 HuMob 2026: Step 2 Spatial - Build 2D Spatial-Temporal Grid Tensor Dataset
 ===============================================================================
-詳細數學模型與推導，請參閱：DIFFUSION_MATHEMATICAL_MODEL.md
+閰喟敦?詨飛璅∪??撠?隢??梧?DIFFUSION_MATHEMATICAL_MODEL.md
 
-資料結構範例 (Data Structure Examples)：
-  - 輸入 (od_time_series.pkl): 
+鞈?蝯?蝭? (Data Structure Examples)嚗?  - 頛詨 (od_time_series.pkl): 
     {
       '31_38-31_38': array([12.0, 15.0, np.nan, ...]),
       ...
     }
-  - 輸出 (spatial_diffusion_dataset.npz):
-    包含 'spatial_z' 陣列 (N, 4, 70, 100)，代表每天 4 個通道的 2D 空間特徵，例如:
-    Z[0, 0, 30, 37] = 0.5 (代表第一天、通道0、座標x=30, y=37 的標準化殘差)
+  - 頛詨 (spatial_diffusion_dataset.npz):
+    ? 'spatial_z' ??? (N, 4, 70, 100)嚗誨銵冽?憭?4 ????2D 蝛粹??孵噩嚗?憒?
+    Z[0, 0, 30, 37] = 0.5 (隞?”蝚砌?憭押?0?漣璅=30, y=37 ??皞?畾榆)
 
-輸入:
-  - od_time_series.pkl (14,563 條 OD 路線時序, 292天)
-  - dates.pkl (292天日期清單)
-  - full_year_baseline.pkl (全年中軸 Baseline)
-處理:
-  1. 空間網格座標界定: X ∈ [1, 70], Y ∈ [1, 100] -> (70, 100) 空間網格
-  2. 構建每日 4 通道 2D 空間張量 (Channels: Retention, Outflow, Inflow, External Exchange)
-  3. 計算空間中軸 Baseline 張量 B_spatial(t) 與空間殘差標準差 σ_spatial
-  4. 輸出標準化空間殘差張量 Z_spatial(t) ∈ R^(4, 70, 100)
+頛詨:
+  - od_time_series.pkl (14,563 璇?OD 頝舐???, 292憭?
+  - dates.pkl (292憭拇????
+  - full_year_baseline.pkl (?典僑銝剛遘 Baseline)
+??:
+  1. 蝛粹?蝬脫摨扳???: X ??[1, 70], Y ??[1, 100] -> (70, 100) 蝛粹?蝬脫
+  2. 瑽遣瘥 4 ?? 2D 蝛粹?撘菟? (Channels: Retention, Outflow, Inflow, External Exchange)
+  3. 閮?蝛粹?銝剛遘 Baseline 撘菟? B_spatial(t) ?征??撌格?皞榆 ?_spatial
+  4. 頛詨璅??征??撌桀撐??Z_spatial(t) ??R^(4, 70, 100)
 ===============================================================================
 """
 import sys
@@ -36,7 +35,7 @@ sys.stdout.reconfigure(encoding='utf-8')
 PACKAGE_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(PACKAGE_ROOT / 'src'))
 from japan_calendar import JAPAN_HOLIDAYS
-from exponential_baseline import compute_full_baseline
+from nine_class_baseline import compute_9class_baseline
 
 OD_PKL       = PACKAGE_ROOT / 'data' / 'processed' / 'od_time_series.pkl'
 DATES_PKL    = PACKAGE_ROOT / 'data' / 'processed' / 'dates.pkl'
@@ -61,7 +60,7 @@ cal_date_to_idx = {d: i for i, d in enumerate(cal_dates)}
 obs_date_to_idx = {d: i for i, d in enumerate(dates_str)}
 N_OBS = len(dates_str)
 
-print("正在計算全域 15,129 條 OD 路線之 4 月真實錨定動態 Baseline...")
+print("甇?閮??典? 15,129 璇?OD 頝舐?銋?4 ??撖阡摰???Baseline...")
 baselines = {}
 for k, raw_arr in od_ts.items():
     y_366 = np.zeros(366, dtype=np.float64)
@@ -69,15 +68,15 @@ for k, raw_arr in od_ts.items():
         if d_str in cal_date_to_idx:
             v = raw_arr[oi]
             y_366[cal_date_to_idx[d_str]] = float(v) if not np.isnan(v) else 0.0
-    b_366, _, _ = compute_full_baseline(y_366, cal_dates, cal_date_to_idx)
+    b_366, _, _ = compute_9class_baseline(y_366, cal_dates, cal_date_to_idx)
     baselines[k] = b_366
 
 BASELINE_PKL.parent.mkdir(parents=True, exist_ok=True)
 with open(BASELINE_PKL, 'wb') as f:
     pickle.dump(baselines, f)
-print(f"✅ 已成功計算並儲存 4 月錨定動態 Baseline 至: {BASELINE_PKL}")
+print(f"??撌脫???蝞蒂?脣? 4 ?摰???Baseline ?? {BASELINE_PKL}")
 
-# ── 1. 解析所有 OD 路線之 (ox, oy) -> (dx, dy) 空間座標 ──────
+# ?? 1. 閫?????OD 頝舐?銋?(ox, oy) -> (dx, dy) 蝛粹?摨扳? ??????
 def parse_grid_coord(grid_str):
     if grid_str == '-1_-1':
         return None
@@ -112,9 +111,9 @@ for pair_key, raw_arr in od_ts.items():
         'b_366': b_366
     })
 
-print(f"成功解析 {len(od_spatial_map):,} 條 OD 路線的空間拓撲對映關係！")
+print(f"??閫?? {len(od_spatial_map):,} 璇?OD 頝舐??征???脣???靽?")
 
-# ── 2. 構建每日 (292, 4, 70, 100) 的空間張量 ─────────────────
+# ?? 2. 瑽遣瘥 (292, 4, 70, 100) ?征?撐???????????????????
 spatial_y = np.zeros((N_OBS, N_CHANNELS, GRID_W, GRID_H), dtype=np.float32)
 spatial_b = np.zeros((N_OBS, N_CHANNELS, GRID_W, GRID_H), dtype=np.float32)
 spatial_obs_mask = np.zeros((N_OBS, N_CHANNELS, GRID_W, GRID_H), dtype=bool)
@@ -136,26 +135,26 @@ for item in od_spatial_map:
         val_y = float(y_val) if has_y else 0.0
         val_b = float(b_val) if not np.isnan(b_val) else 0.0
         
-        # Channel 0: 留存流動 (Retention)
+        # Channel 0: ??瘚? (Retention)
         if is_diag and o_c is not None:
             spatial_y[t_idx, 0, o_c[0], o_c[1]] += val_y
             spatial_b[t_idx, 0, o_c[0], o_c[1]] += val_b
             if has_y: spatial_obs_mask[t_idx, 0, o_c[0], o_c[1]] = True
             
-        # 內部跨區流動 (Cross-grid Flow)
+        # ?折頝典?瘚? (Cross-grid Flow)
         elif not is_ext and not is_diag:
-            # Channel 1: 內部跨區流出 (Outflow) at Origin
+            # Channel 1: ?折頝典?瘚 (Outflow) at Origin
             if o_c is not None:
                 spatial_y[t_idx, 1, o_c[0], o_c[1]] += val_y
                 spatial_b[t_idx, 1, o_c[0], o_c[1]] += val_b
                 if has_y: spatial_obs_mask[t_idx, 1, o_c[0], o_c[1]] = True
-            # Channel 2: 內部跨區流入 (Inflow) at Destination
+            # Channel 2: ?折頝典?瘚 (Inflow) at Destination
             if d_c is not None:
                 spatial_y[t_idx, 2, d_c[0], d_c[1]] += val_y
                 spatial_b[t_idx, 2, d_c[0], d_c[1]] += val_b
                 if has_y: spatial_obs_mask[t_idx, 2, d_c[0], d_c[1]] = True
             
-        # Channel 3: 外域人流交換 (External Exchange)
+        # Channel 3: 憭?鈭箸?鈭斗? (External Exchange)
         elif is_ext:
             target_c = d_c if o_c is None else o_c
             if target_c is not None:
@@ -163,23 +162,22 @@ for item in od_spatial_map:
                 spatial_b[t_idx, 3, target_c[0], target_c[1]] += val_b
                 if has_y: spatial_obs_mask[t_idx, 3, target_c[0], target_c[1]] = True
 
-print(f"✅ 每日 4 通道空間流量場構建完成: 形狀 {spatial_y.shape}")
+print(f"??瘥 4 ??蝛粹?瘚??湔?撱箏??? 敶Ｙ? {spatial_y.shape}")
 
-# ── 3. 計算空間殘差標準差 σ_spatial (4, 70, 100) ──────────────
+# ?? 3. 閮?蝛粹?畾榆璅?撌??_spatial (4, 70, 100) ??????????????
 train_obs_indices = [i for i, d in enumerate(dates_str) if (d < '20240101' or d >= '20240501')]
 
 spatial_residuals = spatial_y[train_obs_indices] - spatial_b[train_obs_indices]
 spatial_sigma = np.std(spatial_residuals, axis=0) # (4, 70, 100)
-# 數值穩定性截斷
-spatial_sigma = np.maximum(spatial_sigma, 0.1)
+# ?詨潛帘摰扳??spatial_sigma = np.maximum(spatial_sigma, 0.1)
 
-# 計算標準化空間殘差張量 Z(t) = (Y - B) / σ
+# 閮?璅??征??撌桀撐??Z(t) = (Y - B) / ?
 spatial_z = (spatial_y - spatial_b) / spatial_sigma
 
-print(f"✅ 空間標準差圖層 σ_spatial 計算完成: 均值 {np.mean(spatial_sigma):.3f}, 最大 {np.max(spatial_sigma):.3f}")
-print(f"✅ 空間標準化殘差 Z_spatial 分佈: 均值 {np.mean(spatial_z):.3f}, 標準差 {np.std(spatial_z):.3f}")
+print(f"??蝛粹?璅?撌桀?撅??_spatial 閮?摰?: ??{np.mean(spatial_sigma):.3f}, ?憭?{np.max(spatial_sigma):.3f}")
+print(f"??蝛粹?璅???撌?Z_spatial ??: ??{np.mean(spatial_z):.3f}, 璅?撌?{np.std(spatial_z):.3f}")
 
-# ── 4. 構建日曆特徵向量 (292, 4) ──────────────────────────────
+# ?? 4. 瑽遣?交??孵噩?? (292, 4) ??????????????????????????????
 cal_features = np.zeros((N_OBS, 4), dtype=np.float32)
 for i, d_str in enumerate(dates_str):
     dt = datetime.strptime(d_str, '%Y%m%d')
@@ -188,10 +186,10 @@ for i, d_str in enumerate(dates_str):
     cal_features[i, 2] = (dt.month - 1) / 11.0
     cal_features[i, 3] = cal_date_to_idx[d_str] / 365.0
 
-# ── 5. 儲存空間資料集 ──────────────────────────────────────────
+# ?? 5. ?脣?蝛粹?鞈?????????????????????????????????????????????
 np.savez_compressed(
     str(OUT_NPZ),
-    spatial_z=spatial_z[train_obs_indices], # 只取震前與震後訓練日
+    spatial_z=spatial_z[train_obs_indices], # ?芸?????敺?蝺湔
     cal_cond=cal_features[train_obs_indices],
     spatial_sigma=spatial_sigma,
     dates=np.array(dates_str)[train_obs_indices]
@@ -208,6 +206,7 @@ spatial_meta = {
 with open(OUT_META, 'wb') as f:
     pickle.dump(spatial_meta, f)
 
-print(f"\n✅  spatial_diffusion_dataset.npz -> {OUT_NPZ}")
-print(f"✅  spatial_meta.pkl              -> {OUT_META}")
+print(f"\n?? spatial_diffusion_dataset.npz -> {OUT_NPZ}")
+print(f"?? spatial_meta.pkl              -> {OUT_META}")
 print("=" * 75)
+
