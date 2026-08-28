@@ -21,7 +21,7 @@ META_PKL     = PACKAGE_ROOT / 'data' / 'outputs' / 'meta_1476.pkl'
 BASELINE_PKL = PACKAGE_ROOT / 'data' / 'outputs' / 'full_year_baseline.pkl'
 OD_PKL       = PACKAGE_ROOT / 'data' / 'processed' / 'od_time_series.pkl'
 DATES_PKL    = PACKAGE_ROOT / 'data' / 'processed' / 'dates.pkl'
-OUT_TSV      = PACKAGE_ROOT / 'data' / 'outputs' / 'dest1476_predictions.tsv'
+OUT_TSV      = PACKAGE_ROOT / 'data' / 'outputs' / 'dest1476_predictions_pure.tsv'
 
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -100,26 +100,12 @@ for r in meta_1476['active_routes']:
     if cls_id == 1 or (mean_v < 0.10 and p_act < 0.10):
         continue
         
-    # 強制設定配重：一週通勤波動佔 0.6，擴散模型佔 0.4
-    psi_scale = 0.6
-    diff_scale = sig_i * 0.4
+    # 2. 開放人工天花板，強制所有權重為 1.0
+    psi_scale = 1.0
+    diff_scale = sig_i * 1.0
 
-    # 🌟 3. 精確萃取並疊加「真實歷史 7 天通勤鋸齒波」
-    pre_obs = [(dates_str[oi], raw[oi]) for oi in train_days_idx if oi < len(raw) and not np.isnan(raw[oi])]
+    # 取消 7 天通勤週期 (psi_7) 波動回調，純粹使用 Baseline + Diffusion
     psi_comp = np.zeros(N_BLIND)
-    if len(pre_obs) >= 14 and mean_v >= 1.0:
-        overall_m = np.mean([v for _, v in pre_obs])
-        wd_map = {w: [] for w in range(7)}
-        for d_str_k, v in pre_obs:
-            wd_map[datetime.strptime(d_str_k, '%Y%m%d').weekday()].append(v)
-        psi_7 = np.zeros(7)
-        for w in range(7):
-            psi_7[w] = (np.mean(wd_map[w]) - overall_m) if wd_map[w] else 0.0
-        
-        for j, ci in enumerate(blind_idxs):
-            tau = j / float(N_BLIND)
-            gate = 1.0
-            psi_comp[j] = psi_7[cal_dts[ci].weekday()] * gate * psi_scale
 
     # 不使用平滑，直接取原始 Diffusion 輸出
     z_i_raw = z_pred_all[:, c_idx, ox, oy]
