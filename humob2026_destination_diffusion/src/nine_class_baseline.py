@@ -111,19 +111,14 @@ def compute_9class_baseline(y_366_raw, cal_dates, cal_date_to_idx):
         
         if cls_id == 1:
             rolling[ci] = 0.0
-        elif cls_id == 7: # 指數衰減 dissipation (1 - e^-3tau)
+        elif cls_id in (2, 3, 4, 5, 7, 8): # 一月大震盪類別（暴增消退 / 重創復甦）均使用指數還原模型
+            # 強指數初期快速反彈/消退 (1 - e^-3tau)
             f_tau = (1.0 - math.exp(-3.0 * tau)) / (1.0 - math.exp(-3.0))
-            rolling[ci] = y_jan_anchor + (y_apr_anchor - y_jan_anchor) * f_tau
-        elif cls_id == 8: # 指數耗散模型 (1 - e^-2tau)
-            f_tau = (1.0 - math.exp(-2.0 * tau)) / (1.0 - math.exp(-2.0))
             rolling[ci] = y_jan_anchor + (y_apr_anchor - y_jan_anchor) * f_tau
         elif cls_id == 9: # 平方根型加速增長 sqrt(tau)
             f_tau = math.sqrt(tau)
             rolling[ci] = y_jan_anchor + (y_apr_anchor - y_jan_anchor) * f_tau
-        elif cls_id == 4: # 二次曲線緩慢回升 tau^2
-            f_tau = tau * tau
-            rolling[ci] = y_jan_anchor + (y_apr_anchor - y_jan_anchor) * f_tau
-        elif cls_id in (2, 3, 5, 6): # 三次 Hermite S 曲線平滑轉移
+        else: # Class 6 常態平穩區：三次 Hermite S 曲線平滑轉移
             f_tau = 3.0 * (tau ** 2) - 2.0 * (tau ** 3)
             rolling[ci] = y_jan_anchor + (y_apr_anchor - y_jan_anchor) * f_tau
 

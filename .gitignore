@@ -1,4 +1,4 @@
-﻿# Byte-compiled / optimized / DLL files
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
@@ -23,11 +23,12 @@ Desktop.ini
 # Large Data & Outputs
 *.tsv
 *.npz
+*.npy
 *.pkl
 *.pt
-data/raw/
-data/processed/
-data/outputs/
+**/data/raw/
+**/data/processed/
+**/data/outputs/
 
 # Ignore Hybrid Folder
 humob2026_spatial_hybrid/
