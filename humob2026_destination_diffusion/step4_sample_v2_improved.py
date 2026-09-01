@@ -46,11 +46,29 @@ blind_idxs = [cal_date_to_idx[d] for d in blind_zone]
 N_BLIND = len(blind_zone)
 
 # 預計算 Recovery Gate（形狀：(N_BLIND,)）
-# τ=0 → Feb 1（剛災後），τ=1 → Apr 30（接近恢復）
-recovery_gate = np.array(
-    [(j / (N_BLIND - 1)) ** GATE_ALPHA for j in range(N_BLIND)],
-    dtype=np.float32
-)
+# 🌟 雙錨點平滑混合門控：2/22 達 80% (二次加速)，3/16 達 100% (線性衝刺)
+idx_222 = blind_zone.index('20240222')  # j = 21 (2/22 達 80%)
+idx_316 = blind_zone.index('20240316')  # j = 44 (3/16 達 100%)
+G0 = 0.50  # 2/01 盲區起點承接 1 月底累積之反彈初值 (50%)
+
+# 1. 災後恢復曲線 (針對受災擾動路線: Class 2, 3, 4, 5, 7, 8 或北部能登震央網格)
+disaster_gate = np.zeros(N_BLIND, dtype=np.float32)
+for j in range(N_BLIND):
+    if j <= idx_222:
+        # 第一階段 (2/01~2/22): 從 G0=0.50 二次方平滑加速至 0.80
+        disaster_gate[j] = G0 + (0.80 - G0) * ((j / idx_222) ** 2.0)
+    elif j <= idx_316:
+        # 第二階段 (2/22~3/16): 從 0.80 線性均勻增長至 1.00
+        progress = (j - idx_222) / (idx_316 - idx_222)
+        disaster_gate[j] = 0.80 + 0.20 * progress
+    else:
+        # 第三階段 (3/16~4/30): 恆定 1.00 完全常態平原
+        disaster_gate[j] = 1.00
+
+# 2. 未受災常態曲線 (針對 Class 6, 9 或南區金澤大都市圈): 全程 100% 滿血通勤齒波
+normal_gate = np.ones(N_BLIND, dtype=np.float32)
+
+DISASTER_PERTURBED_CLASSES = {2, 3, 4, 5, 7, 8}
 
 blind_cond = np.zeros((N_BLIND, 4), dtype=np.float32)
 for j, d_str in enumerate(blind_zone):
@@ -65,26 +83,33 @@ with open(BASELINE_PKL, 'rb') as f: baselines = pickle.load(f)
 with open(OD_PKL,       'rb') as f: od_ts     = pickle.load(f)
 with open(DATES_PKL,    'rb') as f: dates_str = pickle.load(f)
 
-model = MultiChannelSpatialUNet(in_channels=1476, latent_channels=64, cond_dim=4, time_dim=128).to(DEVICE)
-ckpt = torch.load(CHECKPOINT, map_location=DEVICE, weights_only=False)
-model.load_state_dict(ckpt['model'])
-model.eval()
-ddpm = MultiChannelDDPM(T=1000, device=DEVICE)
+CACHE_Z_FILE = PACKAGE_ROOT / 'data' / 'outputs' / 'z_pred_cache.npy'
 
-print("正在執行 DDIM 採樣...", flush=True)
-cond_tensor = torch.tensor(blind_cond, device=DEVICE)
+if CACHE_Z_FILE.exists():
+    print(f"⚡ 載入現有 DDIM 預測快取: {CACHE_Z_FILE}", flush=True)
+    z_pred_all = np.load(CACHE_Z_FILE)
+else:
+    model = MultiChannelSpatialUNet(in_channels=1476, latent_channels=64, cond_dim=4, time_dim=128).to(DEVICE)
+    ckpt = torch.load(CHECKPOINT, map_location=DEVICE, weights_only=False)
+    model.load_state_dict(ckpt['model'])
+    model.eval()
+    ddpm = MultiChannelDDPM(T=1000, device=DEVICE)
 
-z_pred_list = []
-batch_days = 15
-with torch.no_grad():
-    for start_b in range(0, N_BLIND, batch_days):
-        end_b = min(N_BLIND, start_b + batch_days)
-        sub_shape = (end_b - start_b, 1476, 70, 100)
-        sub_cond  = cond_tensor[start_b:end_b]
-        sub_z     = ddpm.ddim_sample(model, sub_shape, c_cond=sub_cond, n_steps=50).cpu()
-        z_pred_list.append(sub_z)
+    print("正在執行 DDIM 採樣...", flush=True)
+    cond_tensor = torch.tensor(blind_cond, device=DEVICE)
 
-z_pred_all = torch.cat(z_pred_list, dim=0).numpy()
+    z_pred_list = []
+    batch_days = 15
+    with torch.no_grad():
+        for start_b in range(0, N_BLIND, batch_days):
+            end_b = min(N_BLIND, start_b + batch_days)
+            sub_shape = (end_b - start_b, 1476, 70, 100)
+            sub_cond  = cond_tensor[start_b:end_b]
+            sub_z     = ddpm.ddim_sample(model, sub_shape, c_cond=sub_cond, n_steps=50).cpu()
+            z_pred_list.append(sub_z)
+
+    z_pred_all = torch.cat(z_pred_list, dim=0).numpy()
+    np.save(CACHE_Z_FILE, z_pred_all)
 
 train_days_idx = [i for i, d in enumerate(dates_str) if d < '20240101']
 output_rows = {d: {} for d in blind_zone}
@@ -115,13 +140,13 @@ for r in meta_1476['active_routes']:
     if cls_id == 1 or (mean_v < 0.10 and p_act < 0.10):
         continue
 
-    # ── 🌟 改進 1：萃取歷史 ψ₇ 並計算規律性分數 ────────────────────────────
+    # ── 🌟 改進 1：萃取歷史 ψ₇ 與 34 週常態期波形疊加重合度 ──────────────────
     pre_obs = [(dates_str[oi], raw[oi])
                for oi in train_days_idx
                if oi < len(raw) and not np.isnan(raw[oi])]
 
     psi_comp  = np.zeros(N_BLIND)
-    psi_scale = 0.4          # 預設（低規律路線）
+    psi_scale = 0.30
     regularity = 0.0
 
     if len(pre_obs) >= 14 and mean_v >= 1.0:
@@ -134,25 +159,33 @@ for r in meta_1476['active_routes']:
             (np.mean(wd_map[w]) - overall_m) if wd_map[w] else 0.0
             for w in range(7)
         ])
+    else:
+        psi_7 = np.zeros(7, dtype=np.float32)
 
-        # 規律性 = 週間 ψ 的標準差 / 路線整體波動
-        # 越高 → 鋸齒波越明顯 → ψ 越可信
-        wd_stdev   = np.std(psi_7)
-        regularity = float(np.clip(wd_stdev / max(sig_i, 1e-5), 0.0, 1.0))
+    # 34 週常態期 (11~12月 + 5~10月) 波形重合離散度
+    date_val_map = {dates_str[oi]: raw[oi] for oi in range(len(raw)) if oi < len(dates_str) and not np.isnan(raw[oi])}
+    normal_dates = [d for d in dates_str if (d < '20240101' or d >= '20240501')]
+    mondays = [d for d in normal_dates if datetime.strptime(d, '%Y%m%d').weekday() == 0]
+    weeks_list = []
+    for m_str in mondays:
+        m_dt = datetime.strptime(m_str, '%Y%m%d')
+        w_vals = []
+        for di in range(7):
+            cur_d = (m_dt + timedelta(days=di)).strftime('%Y%m%d')
+            if cur_d in date_val_map:
+                w_vals.append(date_val_map[cur_d])
+        if len(w_vals) == 7 and np.std(w_vals) > 1e-5:
+            w_arr = np.array(w_vals, dtype=np.float32)
+            weeks_list.append((w_arr - np.mean(w_arr)) / (np.std(w_arr) + 1e-6))
 
-        # ── 🌟 改進 2：規律性自動調整 ψ vs Diffusion 比重 ──────────────────
-        # regularity=1.0 → psi_scale=0.85（幾乎全靠 ψ）
-        # regularity=0.0 → psi_scale=0.30（幾乎不用 ψ）
-        psi_scale = 0.30 + 0.55 * regularity
-
-        # ── 🌟 改進 3：加入 Recovery Gate（τ²，慢起快收）──────────────────
-        for j in range(N_BLIND):
-            gate = recovery_gate[j]           # τ²：0→0.01→0.25→1.0
-            psi_comp[j] = psi_7[cal_dts[blind_idxs[j]].weekday()] * gate * psi_scale
-
-    # Diffusion 比重：規律性越高 → diffusion 佔比越小（防暴走）
-    diff_weight = 1.0 - regularity * 0.6     # regularity=1 → 0.4，regularity=0 → 1.0
-    diff_scale  = sig_i * 0.4 * diff_weight
+    if len(weeks_list) >= 2:
+        norm_matrix = np.stack(weeks_list, axis=0)
+        var_per_day = np.var(norm_matrix, axis=0)
+        mean_var = np.mean(var_per_day)
+        # 🌟 正確理論無偏規律度公式：1.0 - mean_var
+        regularity = float(np.clip(1.0 - mean_var / 1.0, 0.0, 1.0))
+    else:
+        regularity = 0.0
 
     # 路線獨立 Z-Score 標準化（防 U-Net 整體偏移）
     z_i_raw = z_pred_all[:, c_idx, ox, oy]
@@ -163,13 +196,34 @@ for r in meta_1476['active_routes']:
         z_i = np.zeros_like(z_i_raw)
     z_i = np.clip(z_i, -2.5, 2.5)
 
-    # 最終還原
-    if mean_v >= 0.30 and p_act >= 0.25:
-        y_pred = np.maximum(0.0, base_90 + psi_comp + z_i * diff_scale)
-    elif mean_v >= 0.15 and p_act >= 0.15:
-        y_pred = np.maximum(0.0, base_90)
+    is_diag = (o_str == d_str)
+
+    # 🌟 純物理型態門控：所有 Class 6 (常態穩定) 與 Class 9 (持續增長) 全程 100% 滿血；僅受災擾動型 (Class 2,3,4,5,7,8) 套用 disaster_gate
+    cur_gate = disaster_gate if cls_id in DISASTER_PERTURBED_CLASSES else normal_gate
+
+    # ── 🌟 改進 2 & 4：雙軌四象限自適應融合解碼 ──────────────────────────
+    if not is_diag:
+        # 【非對角線 (跨區流動)】：適度放寬底噪門檻至 reg<=0.05 & mean<=1.20，保留實質低流量跨區路線 (如 Class 8)
+        if regularity <= 0.05 and mean_v <= 1.20:
+            y_pred = np.zeros(N_BLIND, dtype=np.float32)
+        else:
+            # 高規律跨區通勤 (勝率100%)：徹底切斷 Diffusion 隨機動量
+            diff_w = max(0.0, 1.0 - regularity / 0.25) if regularity < 0.25 else 0.0
+            psi_sc = 0.50 + 0.60 * regularity
+            psi_c  = np.array([psi_7[cal_dts[blind_idxs[j]].weekday()] * cur_gate[j] * psi_sc for j in range(N_BLIND)])
+            y_pred = np.maximum(0.0, base_90 + psi_c + z_i * (sig_i * 0.35 * diff_w))
+            # 動態微量過濾
+            y_pred[y_pred < 0.05] = 0.0
     else:
-        y_pred = np.zeros(N_BLIND, dtype=np.float32)
+        # 【對角線 (自身停留)】：分母 26.57，大流量波形保護
+        if regularity <= 0.05 and mean_v <= 1.20:
+            y_pred = np.zeros(N_BLIND, dtype=np.float32)
+        else:
+            # 核心樞紐停留：超頻放大 ψ7 齒波 (最高 1.20x)，壓深週末低谷
+            psi_sc = 0.35 + 0.85 * regularity
+            diff_w = max(0.05, 1.0 - regularity * 0.90)
+            psi_c  = np.array([psi_7[cal_dts[blind_idxs[j]].weekday()] * cur_gate[j] * psi_sc for j in range(N_BLIND)])
+            y_pred = np.maximum(0.0, base_90 + psi_c + z_i * (sig_i * 0.40 * diff_w))
 
     for j, d_str_cur in enumerate(blind_zone):
         val = float(y_pred[j])
