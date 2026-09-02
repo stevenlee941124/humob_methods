@@ -35,7 +35,7 @@ OD_PKL      = SHARED_DATA / 'processed' / 'od_time_series.pkl'
 RAW_TSV     = SHARED_DATA / 'raw' / 'humob2026-dataset.tsv'
 
 ODE_STEPS     = 20    # Euler ODE 步數（夠用，比 DDIM 50 步快）
-BATCH_ORIGINS = 32    # 每批同時處理幾個起點（可依顯存調整）
+BATCH_ORIGINS = 4     # 每批處理 4 個起點（4*90=360張地圖，顯存佔用由 20GB 降至 ~2.5GB，徹底杜絕 OOM）
 DEVICE        = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 # ── 盲區日期 ─────────────────────────────────────────────────────────────────
@@ -134,8 +134,12 @@ for b_idx, origin_batch in enumerate(origin_batches):
 
     # 2. Euler ODE 採樣 → (n_valid_origins * N_BLIND, 1, 70, 100)
     shape = (n_valid_origins * N_BLIND, 1, GRID_W, GRID_H)
-    z_pred = OriginFlowMatching.sample(model, cond_batch, shape, DEVICE, n_steps=ODE_STEPS)
-    z_pred = z_pred.cpu().numpy()  # (n_valid_origins * N_BLIND, 1, 70, 100)
+    with torch.inference_mode():
+        z_pred_tensor = OriginFlowMatching.sample(model, cond_batch, shape, DEVICE, n_steps=ODE_STEPS)
+        z_pred = z_pred_tensor.cpu().numpy()  # (n_valid_origins * N_BLIND, 1, 70, 100)
+        del z_pred_tensor, cond_batch
+        if DEVICE == 'cuda':
+            torch.cuda.empty_cache()
 
     # 3. 逐起點解碼
     for oi, o_str in enumerate(origin_batch):
@@ -220,3 +224,27 @@ if RAW_TSV.exists():
     print("\n📊 評估結果:")
     for k, v in scores.items():
         print(f"  • {k:<25}: {v:.5f}")
+
+# ── 🌟 自動導出官方提交格式並驗證 ──────────────────────────────────────────────
+OUT_SUBMISSION = PACKAGE_ROOT / 'data' / 'outputs' / 'origin_fm_submission_official.tsv'
+VALIDATOR      = PACKAGE_ROOT / 'humob2026_validator.py'
+
+print("\n" + "=" * 75)
+print("📦 正在導出官方提交檔案 (20240201 ~ 20240331)...")
+with open(OUT_TSV, 'r', encoding='utf-8') as fin, open(OUT_SUBMISSION, 'w', encoding='utf-8') as fout:
+    for line in fin:
+        pts = line.strip().split('\t')
+        if len(pts) == 2 and '20240201' <= pts[0] <= '20240331':
+            fout.write(f"{pts[0]}\t{pts[1]}\n")
+
+if VALIDATOR.exists():
+    import subprocess
+    print("🔍 正在執行官方 validator 驗證...")
+    res = subprocess.run([sys.executable, str(VALIDATOR), str(OUT_SUBMISSION)], capture_output=True, text=True)
+    print("Validator 輸出:")
+    print(res.stdout)
+    if res.returncode == 0:
+        print(f"🎉 恭喜！官方提交檔案 100% 通過驗證！檔案位置 → {OUT_SUBMISSION}")
+    else:
+        print("❌ 驗證失敗:", res.stderr)
+print("=" * 75)

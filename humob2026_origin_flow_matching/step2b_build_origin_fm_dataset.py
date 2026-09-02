@@ -196,7 +196,7 @@ for o_idx, o_str in enumerate(eval_origins):
             y_o[:, dx, dy] += vals                 # 🚀 整條時間軸一次加
 
         if b_366 is not None:
-            b_obs = b_366[obs_to_cal_idx]          # 🚀 一次 fancy indexing
+            b_obs = np.nan_to_num(b_366[obs_to_cal_idx], nan=0.0)  # 🚀 一次 fancy indexing + 防 NaN
             b_o[:, dx, dy] += b_obs.astype(np.float32)
 
     # 擴充 channel 維度: (N_OBS, 1, W, H)
@@ -205,12 +205,16 @@ for o_idx, o_str in enumerate(eval_origins):
 
     # sigma & 標準化
     resids  = y_o[train_obs_indices] - b_o[train_obs_indices]   # (N_TRAIN, 1, W, H)
+    resids  = np.nan_to_num(resids, nan=0.0)
     sigma_o = np.std(resids, axis=0)                             # (1, W, H)
+    sigma_o = np.nan_to_num(sigma_o, nan=0.1)
     sigma_o = np.maximum(sigma_o, 0.1)
     z_o     = (y_o - b_o) / sigma_o                             # (N_OBS, 1, W, H)
+    z_o     = np.nan_to_num(z_o, nan=0.0, posinf=0.0, neginf=0.0)
 
     # 🚀 訓練切片：一次 numpy indexing，不用 for ti
     z_train = z_o[train_obs_indices]                             # (N_TRAIN, 1, W, H)
+    z_train = np.nan_to_num(z_train, nan=0.0, posinf=0.0, neginf=0.0)
 
     # 寫入預分配陣列
     sample_z_arr[write_ptr: write_ptr + N_TRAIN] = z_train

@@ -17,7 +17,7 @@ FLOW_THRESHOLD = 0.05
 
 def compute_full_baseline(y_366_input, cal_dates, cal_date_to_idx):
     total = len(cal_dates)
-    b_366 = np.full(total, np.nan, dtype=np.float64)
+    b_366 = np.zeros(total, dtype=np.float64)
 
     if np.sum(y_366_input > 0.05) < 5:
         return b_366, 0.0, "Dead Zero"
@@ -81,7 +81,7 @@ def compute_full_baseline(y_366_input, cal_dates, cal_date_to_idx):
     # 5. 全年一體化高斯濾波 (消除所有拼接折角與斷崖)
     valid_mask = ~np.isnan(rolling)
     if valid_mask.sum() < 5:
-        return b_366, 0.0, "Dead Zero"
+        return np.zeros(total, dtype=np.float64), 0.0, "Dead Zero"
 
     x_all = np.arange(total)
     rolling_filled = np.interp(x_all, x_all[valid_mask], rolling[valid_mask])

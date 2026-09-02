@@ -233,6 +233,19 @@ for r in meta_1476['active_routes']:
             output_rows[d_str_cur][o_str][d_str] = round(val, 4)
             n_written += 1
 
+def parse_od_pair(pair_key):
+    if pair_key.startswith('-1_-1--1_-1'):
+        return '-1_-1', '-1_-1'
+    elif pair_key.startswith('-1_-1-'):
+        return '-1_-1', pair_key[6:]
+    elif pair_key.endswith('--1_-1'):
+        return pair_key[:-6], '-1_-1'
+    else:
+        parts = pair_key.split('-')
+        if len(parts) == 2:
+            return parts[0], parts[1]
+    return None, None
+
 # Non-active routes：純 Baseline
 for pair_key, b_366 in baselines.items():
     if pair_key in active_keys: continue
@@ -242,9 +255,10 @@ for pair_key, b_366 in baselines.items():
     mean_v  = np.mean(valid_v) if valid_v else 0.0
     p_act   = (sum(1 for x in valid_v if x > 0) / len(valid_v)) if valid_v else 0.0
     if mean_v < 0.25 or p_act < 0.20: continue
-    parts = pair_key.split('-')
-    o_str = '-1_-1' if pair_key.startswith('-1_-1-') else parts[0]
-    d_str = parts[1].replace('_', '-') if pair_key.startswith('-1_-1-') else parts[1]
+    
+    o_str, d_str = parse_od_pair(pair_key)
+    if not o_str or not d_str: continue
+
     base_90 = b_366[blind_idxs]
     for j, d_str_cur in enumerate(blind_zone):
         val = float(base_90[j])

@@ -23,6 +23,13 @@ except ImportError:
     print("[警告] tqdm 未安裝，將使用簡易進度。可用 pip install tqdm 安裝。", flush=True)
 
 sys.stdout.reconfigure(encoding='utf-8')
+
+# 防止 Windows 在訓練期間進入睡眠
+try:
+    import ctypes
+    ctypes.windll.kernel32.SetThreadExecutionState(0x80000000 | 0x00000001)
+except Exception:
+    pass
 PACKAGE_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(PACKAGE_ROOT / 'src'))
 
