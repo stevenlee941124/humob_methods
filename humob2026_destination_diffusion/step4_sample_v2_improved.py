@@ -45,43 +45,31 @@ blind_zone = [d for d in cal_dates if '20240201' <= d <= '20240430']
 blind_idxs = [cal_date_to_idx[d] for d in blind_zone]
 N_BLIND = len(blind_zone)
 
-# 預計算 Recovery Gate（形狀：(N_BLIND,)）
-# 🌟 雙錨點平滑混合門控：2/22 達 80% (二次加速)，3/16 達 100% (線性衝刺)
-idx_222 = blind_zone.index('20240222')  # j = 21 (2/22 達 80%)
-idx_316 = blind_zone.index('20240316')  # j = 44 (3/16 達 100%)
-G0 = 0.50  # 2/01 盲區起點承接 1 月底累積之反彈初值 (50%)
-
-# 1. 災後恢復曲線 (針對受災擾動路線: Class 2, 3, 4, 5, 7, 8 或北部能登震央網格)
-disaster_gate = np.zeros(N_BLIND, dtype=np.float32)
-for j in range(N_BLIND):
-    if j <= idx_222:
-        # 第一階段 (2/01~2/22): 從 G0=0.50 二次方平滑加速至 0.80
-        disaster_gate[j] = G0 + (0.80 - G0) * ((j / idx_222) ** 2.0)
-    elif j <= idx_316:
-        # 第二階段 (2/22~3/16): 從 0.80 線性均勻增長至 1.00
-        progress = (j - idx_222) / (idx_316 - idx_222)
-        disaster_gate[j] = 0.80 + 0.20 * progress
-    else:
-        # 第三階段 (3/16~4/30): 恆定 1.00 完全常態平原
-        disaster_gate[j] = 1.00
-
-# 2. 未受災常態曲線 (針對 Class 6, 9 或南區金澤大都市圈): 全程 100% 滿血通勤齒波
-normal_gate = np.ones(N_BLIND, dtype=np.float32)
-
-DISASTER_PERTURBED_CLASSES = {2, 3, 4, 5, 7, 8}
-
-blind_cond = np.zeros((N_BLIND, 4), dtype=np.float32)
-for j, d_str in enumerate(blind_zone):
-    dt = datetime.strptime(d_str, '%Y%m%d')
-    blind_cond[j, 0] = dt.weekday() / 6.0
-    blind_cond[j, 1] = 1.0 if d_str in JAPAN_HOLIDAYS else 0.0
-    blind_cond[j, 2] = (dt.month - 1) / 11.0
-    blind_cond[j, 3] = cal_date_to_idx[d_str] / 365.0
+# ── 60 天雙錨點連續接續門控設定 ────────────────────────────────────────────────
+# 盲區缺漏共 60 天 (2024/02/01 ~ 03/31: 29天 + 31天 = 60天)
+# 4/01 起已有真實觀測，門控維持 1.00
+N_GAP_DAYS = 60
+tau_60 = np.array([
+    min(1.0, float(j) / (N_GAP_DAYS - 1)) if j < N_GAP_DAYS else 1.0
+    for j in range(N_BLIND)
+], dtype=np.float32)
 
 with open(META_PKL,     'rb') as f: meta_1476 = pickle.load(f)
 with open(BASELINE_PKL, 'rb') as f: baselines = pickle.load(f)
 with open(OD_PKL,       'rb') as f: od_ts     = pickle.load(f)
 with open(DATES_PKL,    'rb') as f: dates_str = pickle.load(f)
+
+EXCLUDED_DATES = {
+    '20231126', '20231130', '20231201', '20231203', '20231204', '20231205',
+    '20231214', '20240118', '20240123', '20240124', '20240202', '20240305',
+    '20240408', '20240426', '20240529', '20240708'
+}
+
+DISASTER_PERTURBED_CLASSES = {2, 3, 4, 5, 7, 8}
+
+late_jan_dates = [d for d in dates_str if '20240115' <= d <= '20240131' and d not in EXCLUDED_DATES]
+normal_pre_dates = [d for d in dates_str if '20231101' <= d < '20231225' and d not in EXCLUDED_DATES]
+date_idx_map = {d: i for i, d in enumerate(dates_str)}
 
 CACHE_Z_FILE = PACKAGE_ROOT / 'data' / 'outputs' / 'z_pred_cache.npy'
 
@@ -198,8 +186,23 @@ for r in meta_1476['active_routes']:
 
     is_diag = (o_str == d_str)
 
-    # 🌟 純物理型態門控：所有 Class 6 (常態穩定) 與 Class 9 (持續增長) 全程 100% 滿血；僅受災擾動型 (Class 2,3,4,5,7,8) 套用 disaster_gate
-    cur_gate = disaster_gate if cls_id in DISASTER_PERTURBED_CLASSES else normal_gate
+    # 🌟 60 天雙錨點自適應接續門控 (1月底無縫接續至4月)
+    if cls_id in DISASTER_PERTURBED_CLASSES:
+        pre_vals = [raw[date_idx_map[d]] for d in normal_pre_dates if date_idx_map[d] < len(raw) and not np.isnan(raw[date_idx_map[d]])]
+        late_vals = [raw[date_idx_map[d]] for d in late_jan_dates if date_idx_map[d] < len(raw) and not np.isnan(raw[date_idx_map[d]])]
+        std_pre = np.std(pre_vals) if len(pre_vals) >= 7 else 0.0
+        std_late = np.std(late_vals) if len(late_vals) >= 5 else 0.0
+        mean_pre = np.mean(pre_vals) if pre_vals else 0.0
+        mean_late = np.mean(late_vals) if late_vals else 0.0
+        if std_pre > 0.5:
+            g_start = float(np.clip(std_late / std_pre, 0.25, 1.15))
+        elif mean_pre > 1.0:
+            g_start = float(np.clip(mean_late / mean_pre, 0.25, 1.15))
+        else:
+            g_start = 1.0
+        cur_gate = g_start + (1.0 - g_start) * (tau_60 ** 1.5)
+    else:
+        cur_gate = np.ones(N_BLIND, dtype=np.float32)
 
     # ── 🌟 改進 2 & 4：雙軌四象限自適應融合解碼 ──────────────────────────
     if not is_diag:
@@ -207,11 +210,12 @@ for r in meta_1476['active_routes']:
         if regularity <= 0.05 and mean_v <= 1.20:
             y_pred = np.zeros(N_BLIND, dtype=np.float32)
         else:
-            # 高規律跨區通勤 (勝率100%)：徹底切斷 Diffusion 隨機動量
+            # 高規律跨區通勤：先加總再整體乘上 cur_gate
             diff_w = max(0.0, 1.0 - regularity / 0.25) if regularity < 0.25 else 0.0
             psi_sc = 0.50 + 0.60 * regularity
-            psi_c  = np.array([psi_7[cal_dts[blind_idxs[j]].weekday()] * cur_gate[j] * psi_sc for j in range(N_BLIND)])
-            y_pred = np.maximum(0.0, base_90 + psi_c + z_i * (sig_i * 0.35 * diff_w))
+            psi_raw = np.array([psi_7[cal_dts[blind_idxs[j]].weekday()] * psi_sc for j in range(N_BLIND)], dtype=np.float32)
+            resid_total = (psi_raw + z_i * (sig_i * 0.35 * diff_w)) * cur_gate
+            y_pred = np.maximum(0.0, base_90 + resid_total)
             # 動態微量過濾
             y_pred[y_pred < 0.05] = 0.0
     else:
@@ -219,11 +223,12 @@ for r in meta_1476['active_routes']:
         if regularity <= 0.05 and mean_v <= 1.20:
             y_pred = np.zeros(N_BLIND, dtype=np.float32)
         else:
-            # 核心樞紐停留：超頻放大 ψ7 齒波 (最高 1.20x)，壓深週末低谷
+            # 核心樞紐停留：先加總 (ψ7 + Diffusion) 再整體乘上 cur_gate
             psi_sc = 0.35 + 0.85 * regularity
             diff_w = max(0.05, 1.0 - regularity * 0.90)
-            psi_c  = np.array([psi_7[cal_dts[blind_idxs[j]].weekday()] * cur_gate[j] * psi_sc for j in range(N_BLIND)])
-            y_pred = np.maximum(0.0, base_90 + psi_c + z_i * (sig_i * 0.40 * diff_w))
+            psi_raw = np.array([psi_7[cal_dts[blind_idxs[j]].weekday()] * psi_sc for j in range(N_BLIND)], dtype=np.float32)
+            resid_total = (psi_raw + z_i * (sig_i * 0.40 * diff_w)) * cur_gate
+            y_pred = np.maximum(0.0, base_90 + resid_total)
 
     for j, d_str_cur in enumerate(blind_zone):
         val = float(y_pred[j])
