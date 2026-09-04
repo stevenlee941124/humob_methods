@@ -144,14 +144,14 @@ for i, ti in enumerate(train_obs_indices):
     d_str = dates_str[ti]
     dt    = datetime.strptime(d_str, '%Y%m%d')
     wd    = dt.weekday()
-    month = dt.month - 1
     c_idx = cal_date_to_idx.get(d_str, 0)
+    tau   = c_idx / 365.0
     all_train_cond_base[i, 0] = math.sin(2 * math.pi * wd / 7)
     all_train_cond_base[i, 1] = math.cos(2 * math.pi * wd / 7)
     all_train_cond_base[i, 2] = 1.0 if d_str in JAPAN_HOLIDAYS else 0.0
-    all_train_cond_base[i, 3] = math.sin(2 * math.pi * month / 12)
-    all_train_cond_base[i, 4] = math.cos(2 * math.pi * month / 12)
-    all_train_cond_base[i, 5] = c_idx / 365.0
+    all_train_cond_base[i, 3] = math.sin(2 * math.pi * tau)  # 連續平滑年季節週期 (取代階梯 month)
+    all_train_cond_base[i, 4] = math.cos(2 * math.pi * tau)  # 連續平滑年季節週期 (取代階梯 month)
+    all_train_cond_base[i, 5] = tau                          # 連續線性時間進程
 print(f"✅ 條件矩陣 shape: {all_train_cond_base.shape}")
 
 # ── 🚀 預建 cal_idx → b_366 的 obs 切片索引 ──────────────────────────────────

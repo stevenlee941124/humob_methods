@@ -36,11 +36,11 @@ sys.path.insert(0, str(PACKAGE_ROOT / 'src'))
 from origin_flow_matching import OriginDestFlowUNet, OriginFlowMatching
 
 NPZ_PATH   = PACKAGE_ROOT / 'data' / 'outputs' / 'origin_fm_dataset.npz'
-CHECKPOINT = PACKAGE_ROOT / 'data' / 'outputs' / 'origin_fm_checkpoint.pt'
+CHECKPOINT = PACKAGE_ROOT / 'data' / 'outputs' / 'origin_fm_checkpoint_ep5.pt'
 
 # ── 超參數 ─────────────────────────────────────────────────────────────────────
 BATCH_SIZE = 256   # 64→256：steps/epoch 縮 4 倍，攤薄 random data access 開銷
-EPOCHS     = 20    # 80→20：Flow Matching 收斂比 DDPM 快，20 epoch 足夠
+EPOCHS     = 5     # 肘點早停 (Elbow point at epoch 5)
 LR         = 3e-4
 BASE_CH    = 32
 TIME_DIM   = 128
@@ -90,6 +90,10 @@ print("\n2/3 Flow Matching Training...", flush=True)
 start_time = time.time()
 best_loss  = 1e9
 
+global_step = 0
+step_loss_history = []
+epoch_loss_history = []
+
 for epoch in range(1, EPOCHS + 1):
     model.train()
     total_loss = 0.0
@@ -124,6 +128,9 @@ for epoch in range(1, EPOCHS + 1):
         optimizer.step()
 
         total_loss += loss.item() * B
+        global_step += 1
+        if global_step % 10 == 0:
+            step_loss_history.append({'step': global_step, 'loss': float(loss.item())})
 
         # 即時顯示
         if HAS_TQDM:
@@ -143,6 +150,7 @@ for epoch in range(1, EPOCHS + 1):
     # ── epoch 結束：印出摘要 + ETA ────────────────────────────────────────────
     scheduler.step()
     avg_loss  = total_loss / N_SAMPLES
+    epoch_loss_history.append({'epoch': epoch, 'loss': float(avg_loss)})
     epoch_sec = time.time() - t_epoch
     remaining = epoch_sec * (EPOCHS - epoch)   # 以本 epoch 速度估算剩餘時間
     lr_cur    = optimizer.param_groups[0]['lr']
@@ -151,7 +159,7 @@ for epoch in range(1, EPOCHS + 1):
     if avg_loss < best_loss:
         best_loss = avg_loss
         CHECKPOINT.parent.mkdir(parents=True, exist_ok=True)
-        torch.save({
+        ckpt_data = {
             'epoch':     epoch,
             'model':     model.state_dict(),
             'best_loss': best_loss,
@@ -159,8 +167,12 @@ for epoch in range(1, EPOCHS + 1):
             'cond_dim':  COND_DIM,
             'base_ch':   BASE_CH,
             'time_dim':  TIME_DIM,
-        }, str(CHECKPOINT))
-        saved_mark = " [saved]"
+        }
+        torch.save(ckpt_data, str(CHECKPOINT))
+        # 同步另存該 epoch 專屬權重 (讓 ep4 與 ep5 都能自由選用)
+        ep_specific_ckpt = CHECKPOINT.parent / f"origin_fm_checkpoint_ep{epoch}.pt"
+        torch.save(ckpt_data, str(ep_specific_ckpt))
+        saved_mark = f" [saved ep{epoch}]"
 
     rem_h = int(remaining // 3600)
     rem_m = int((remaining % 3600) // 60)
@@ -176,4 +188,52 @@ for epoch in range(1, EPOCHS + 1):
 print("=" * 75, flush=True)
 print(f"✅ Training Done! Best Loss: {best_loss:.6f}", flush=True)
 print(f"✅ Checkpoint → {CHECKPOINT}", flush=True)
+
+# ── 🌟 自動繪製並儲存 Loss vs Steps / Epochs 曲線圖 ───────────────────────
+import json
+import pandas as pd
+import matplotlib.pyplot as plt
+
+history_json = PACKAGE_ROOT / 'data' / 'outputs' / 'loss_history_ep5.json'
+loss_png     = PACKAGE_ROOT / 'data' / 'outputs' / 'loss_step_curve_ep5.png'
+
+with open(history_json, 'w', encoding='utf-8') as f:
+    json.dump({'step_loss': step_loss_history, 'epoch_loss': epoch_loss_history}, f, indent=2)
+print(f"✅ Loss 數據日誌 → {history_json}")
+
+plt.style.use('dark_background')
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6), dpi=150)
+fig.patch.set_facecolor('#0f172a')
+
+# 子圖 1: Loss vs Steps
+steps = [x['step'] for x in step_loss_history]
+losses = [x['loss'] for x in step_loss_history]
+ax1.set_facecolor('#1e293b')
+ax1.grid(True, color='#334155', linestyle='--', alpha=0.5)
+ax1.plot(steps, losses, color='#10b981', alpha=0.35, linewidth=1.0, label='Raw Batch Loss')
+
+if len(losses) > 10:
+    ema = pd.Series(losses).ewm(span=30).mean().values
+    ax1.plot(steps, ema, color='#34d399', linewidth=2.2, label='EMA Smoothed (span=30)')
+
+ax1.set_title("Flow Matching Loss vs Steps", color='#f8fafc', fontsize=13, fontweight='bold')
+ax1.set_xlabel("Training Steps", color='#cbd5e1')
+ax1.set_ylabel("CNF Vector Field MSE Loss", color='#cbd5e1')
+ax1.legend(facecolor='#1e293b', edgecolor='#475569')
+
+# 子圖 2: Loss vs Epochs
+eps = [x['epoch'] for x in epoch_loss_history]
+ep_losses = [x['loss'] for x in epoch_loss_history]
+ax2.set_facecolor('#1e293b')
+ax2.grid(True, color='#334155', linestyle='--', alpha=0.5)
+ax2.plot(eps, ep_losses, color='#f43f5e', marker='o', linewidth=2.2, markersize=6, label='Epoch Avg Loss')
+ax2.set_title("Flow Matching Loss vs Epochs", color='#f8fafc', fontsize=13, fontweight='bold')
+ax2.set_xlabel("Epoch", color='#cbd5e1')
+ax2.set_ylabel("Average Loss", color='#cbd5e1')
+ax2.legend(facecolor='#1e293b', edgecolor='#475569')
+
+plt.tight_layout()
+plt.savefig(loss_png, facecolor=fig.get_facecolor(), edgecolor='none')
+plt.close()
+print(f"✅ Loss Steps 曲線圖已繪製 → {loss_png}")
 print("=" * 75, flush=True)
